@@ -1,7 +1,7 @@
 # Project: NAME
 
 ## Contributors
-NAME, NAME, NAME
+Janelys Graciano, Ellie Li 
 
 ## Dependencies
 - LANGUAGE AND VERSION
