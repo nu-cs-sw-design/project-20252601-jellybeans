@@ -3,9 +3,14 @@ package jellybeans;
 import org.objectweb.asm.*;
 
 
-/* ============================================================
-   1. Naming Convention Check
-   ============================================================ */
+/**
+ * NamingConventionCheck
+ * This check inspects:
+ *  - Class names: must start with an uppercase letter.
+ *  - Method names: must start with a lowercase letter (constructors are ignored).
+ *  - Field names: must start with a lowercase letter.
+ */
+
 class NamingConventionCheck extends ClassVisitor {
 
     private String simpleName;
@@ -66,9 +71,24 @@ class NamingConventionCheck extends ClassVisitor {
 }
 
 
-/* ============================================================
-   2. Public Class With No Public Constructor Check
-   ============================================================ */
+/**
+ * NonPublicConstructorCheck
+ *
+ * A warning is issued when ALL of the following conditions are true:
+ *  - The class is public.
+ *  - The class is NOT abstract and NOT an interface.
+ *  - The class declares at least one constructor.
+ *  - None of its constructors are public or protected (all are private or package-private).
+ *
+ * Rationale:
+ *  - A public class with only private constructors may indicate an accidental access-level mistake,
+ *    making the class impossible to instantiate from outside its package.
+ *
+ * Implementation details:
+ *  - Tracks constructor access modifiers by overriding visitMethod().
+ *  - Evaluates the final condition in visitEnd(), after the whole class has been processed.
+ */
+
 class NonPublicConstructorCheck extends ClassVisitor {
 
     private String simpleName;
@@ -133,9 +153,19 @@ class NonPublicConstructorCheck extends ClassVisitor {
 }
 
 
-/* ============================================================
-   3. Long Method Check (instruction count)
-   ============================================================ */
+/**
+ * LongMethodCheck
+ *
+ * This check measures:
+ *  - Total number of bytecode instructions in each non-constructor method.
+ *  - If the count exceeds `maxInstructions`, a warning is printed.
+ *
+ * Implementation details:
+ *  - Overrides a set of MethodVisitor instruction callbacks (visitInsn, visitVarInsn, etc.).
+ *  - Increments an internal counter for each instruction encountered.
+ *  - Final check is performed in visitEnd() once the method is fully visited.
+ */
+
 class LongMethodCheck extends ClassVisitor {
 
     private String simpleClassName;
