@@ -1,22 +1,24 @@
 # Project: NAME
 
 ## Contributors
-Janelys Graciano, Ellie Li 
+
+Janelys Graciano, Ellie Li
 
 ## Dependencies
-- LANGUAGE AND VERSION
-- EXTERNAL LIBRARIES
-- ETC
+
+- JDK 17+
+- ASM 9.7.1
 
 ## Build Instructions
+
 HOW TO BUILD YOUR PROJECT.
 
 Compile the linter
-javac -cp lib/asm-9.7.1.jar -d out src/*.java
+javac -cp lib/asm-9.7.1.jar -d out src/\*.java
 
 Compile example classes to analyze
 mkdir -p examples/out
-javac -d examples/out examples/Example.java
+javac -d examples/out examples/\*.java
 
 Run the linter (Mac/Linux)
 java -cp lib/asm-9.7.1.jar:out jellybeans.Main examples/out
