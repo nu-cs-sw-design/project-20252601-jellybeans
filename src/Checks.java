@@ -433,17 +433,13 @@ class UnusedFieldOrMethodCheck extends ClassVisitor{
  * This check looks to see if methods to detect if they return null explicitly.
  *
  * Rationale:
- *  - Methods that return null can lead to NullPointerExceptions if callers
- *    are not careful, decreasing code safety and maintainability.
- *  - Flagging such methods encourages developers to use alternatives like
- *    Optional or default objects, or to document the null-return contract.
+ *  - Methods that return null can lead to exceptions if callers are not careful (default objects or Optional usage is preferred)
  *
  * Implementation details:
  *  - During method visits, the bytecode instructions are analyzed.
- *  - If a method contains a RETURN of a null constant (ACONST_NULL followed by ARETURN),
- *    it is flagged as potentially unsafe.
- *  - Synthetic, compiler-generated, or void-returning methods are ignored.
- *  - At the end of the visit, all flagged methods are reported.
+ *  - If a method contains a return of a null constant, it is flagged with a warning
+ *  - void methods are ignored as well as compiler methods
+ *  - Flagged methods are printed with a warning
  */
 class NullReturnCheck extends ClassVisitor {
 
@@ -469,18 +465,11 @@ class NullReturnCheck extends ClassVisitor {
         return new MethodVisitor(api, mv) {
             @Override
             public void visitInsn(int opcode) {
-                // Detect explicit null returns: ACONST_NULL followed by ARETURN
                 if (opcode == Opcodes.ARETURN) {
-                    // The previous instruction must be ACONST_NULL
-                    // ASM 9+ allows using MethodVisitor without tracking stack,
-                    // so we need a simple trick: override visitInsn and flag ARETURN if previous instruction was null
-                    // We'll use a small state variable to track
                     if (lastWasNull) {
                         flaggedMethods.add(name + descriptor);
                     }
                 }
-
-                // Track if the last instruction was pushing null
                 lastWasNull = (opcode == Opcodes.ACONST_NULL);
 
                 super.visitInsn(opcode);
