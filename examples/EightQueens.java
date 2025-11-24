@@ -14,10 +14,9 @@ public class EightQueens {
                 printBoard(solutions.get(i));
             else
                 System.out.println("UH OH!!!!! BETTER FIX IT!!!!!");
-        }   // <-- CLOSES THE for LOOP
+        }  
 
-    }       // <-- THIS WAS MISSING: closes main()
-
+    }      
 
     /**
      * determine if the chess board represented by board is a safe set up
