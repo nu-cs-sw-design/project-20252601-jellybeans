@@ -10,4 +10,10 @@ public class Example {
         }
         System.out.println(x);
     }
+
+    public String getNullValue() {
+        return null;
+    }
+
+
 }

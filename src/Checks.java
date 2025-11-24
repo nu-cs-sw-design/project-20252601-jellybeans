@@ -225,3 +225,278 @@ class LongMethodCheck extends ClassVisitor {
         };
     }
 }
+
+/**
+ * MagicNumberCheck
+ *
+ * This check inspects:
+ *  - There is no use of "magic numbers" in methods or class fields (except for constants like 0,1,-1, etc.)
+ *  - Numeric values must be stored in a named variable/constant (not hardcoded directly within the code)
+ * Implementation details:
+ *  - Tracks constructor access modifiers by overriding visitMethod().
+ *  - Evaluates the final condition in visitEnd(), after the whole class has been processed.
+ */
+class MagicNumberCheck extends ClassVisitor {
+
+    //holds name of class curr visited
+    private String simpleName;
+
+    private static final java.util.Set<Number> ALLOWED_Values = java.util.Set.of(-1, 0, 1);
+
+    //calls parent constructor for ASM API
+    public MagicNumberCheck() {
+        super(Opcodes.ASM9);
+    }
+
+    @Override
+    public void visit(int version,
+                      int access,
+                      String name,
+                      String signature,
+                      String superName,
+                      String[] interfaces) {
+        this.simpleName = name;
+        super.visit(version, access, name, signature, superName, interfaces);
+    }
+
+    @Override
+    public MethodVisitor visitMethod(int access, String name, String desc,
+                                     String signature, String[] exceptions){
+        if (name.equals("<init>") || name.equals("<clinit>")) {
+            return super.visitMethod(access, name, desc, signature, exceptions);
+        }
+
+        MethodVisitor mv = super.visitMethod(access, name, desc, signature, exceptions);
+
+        return new MethodVisitor(api, mv) {
+
+            @Override
+            public void visitLdcInsn(Object value) {
+                if (value instanceof Number) {
+                    Number num = (Number) value;
+                    check(num, name);
+                }
+                super.visitLdcInsn(value);
+            }
+
+            @Override
+            public void visitIntInsn(int opcode, int operand) {
+                if (opcode == Opcodes.BIPUSH || opcode == Opcodes.SIPUSH) {
+                    check(operand, name);
+                }
+                super.visitIntInsn(opcode, operand);
+            }
+
+            @Override
+            public void visitInsn(int opcode) {
+                Integer val = null;
+
+                switch (opcode) {
+                    case Opcodes.ICONST_M1:
+                        val = -1;
+                        break;
+                    case Opcodes.ICONST_0:
+                        val = 0;
+                        break;
+                    case Opcodes.ICONST_1:
+                        val = 1;
+                        break;
+                    case Opcodes.ICONST_2:
+                        val = 2;
+                        break;
+                    case Opcodes.ICONST_3:
+                        val = 3;
+                        break;
+                    case Opcodes.ICONST_4:
+                        val = 4;
+                        break;
+                    case Opcodes.ICONST_5:
+                        val = 5;
+                        break;
+                    default:
+                        // leave val = null
+                        break;
+                }
+
+                if (val != null) {
+                    check(val, name);
+                }
+                super.visitInsn(opcode);
+            }
+
+            private void check(Number num, String method) {
+                if (!ALLOWED_Values.contains(num)) {
+                    System.out.printf("Warning: Magic number %s found in %s.%s()%n", num, simpleName, method);
+                }
+            }
+        };
+    }
+
+}
+/**
+ * UnusedFieldOrMethodCheck
+ *
+ * This check inspects that:
+ *  - There are no fields or methods that are declared but never read/written/invoked within the class
+ *
+ * Rationale:
+ *  - Unused fields/methods create unnecessary clutter and make maintainability harder
+ * Implementation details:
+ *  - During the class visit, all declared fields and methods are collected.
+ *  - Each time a field or method is referenced (GETFIELD, PUTFIELD, INVOKEVIRTUAL, etc.),
+ *    it is marked as "used".
+ *  - At the end of the visit (visitEnd()), the check compares the sets of declared
+ *     members and used members.
+ *  - Any field or method that was never marked as used is reported as unused.
+ */
+
+class UnusedFieldOrMethodCheck extends ClassVisitor{
+
+    private final java.util.Set<String> declaredFields = new java.util.HashSet<>();
+    private final java.util.Set<String> declaredMethods = new java.util.HashSet<>();
+    private final java.util.Set<String> usedFields = new java.util.HashSet<>();
+    private final java.util.Set<String> usedMethods = new java.util.HashSet<>();
+
+    private String currClassName;
+
+    public UnusedFieldOrMethodCheck(int api) {
+        super(api);
+    }
+    @Override
+    public void visit(int version, int access, String name, String signature, String superName, String[] interfaces) {
+        // Extract simple class name from internal name
+        int idx = name.lastIndexOf('/');
+        currClassName = (idx >= 0) ? name.substring(idx + 1) : name;
+        super.visit(version, access, name, signature, superName, interfaces);
+    }
+
+    @Override
+    public FieldVisitor visitField(int access, String name, String descriptor, String signature, Object value) {
+        declaredFields.add(name + ":" + descriptor);
+        return super.visitField(access, name, descriptor, signature, value);
+    }
+    @Override
+    public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+        declaredMethods.add(name + descriptor);
+
+        MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
+
+        return new MethodVisitor(api, mv) {
+            @Override
+            public void visitFieldInsn(int opcode, String owner, String name, String descriptor) {
+                usedFields.add(name + ":" + descriptor);
+                super.visitFieldInsn(opcode, owner, name, descriptor);
+            }
+
+            @Override
+            public void visitMethodInsn(int opcode, String owner, String name, String descriptor, boolean isInterface) {
+                usedMethods.add(name + descriptor);
+                super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
+            }
+        };
+    }
+
+    @Override
+    public void visitEnd() {
+        //only keep unused fields
+        java.util.Set<String> unusedFields = new java.util.HashSet<>(declaredFields);
+        unusedFields.removeAll(usedFields);
+
+        //only keep unused methods
+        java.util.Set<String> unusedMethods = new java.util.HashSet<>(declaredMethods);
+        unusedMethods.removeAll(usedMethods);
+
+        for (String field : unusedFields) {
+            int idx = field.indexOf(':');
+            String simpleName = (idx >= 0) ? field.substring(0, idx) : field;
+            System.out.println("Warning: Unused field detected in " + currClassName + ": Method" + simpleName);
+        }
+
+        for (String method : unusedMethods) {
+            int idx = method.indexOf('(');        // position of argument list
+            String simpleName = (idx >= 0) ? method.substring(0, idx) : method;
+
+            //skip compiler generated method names
+            if (!simpleName.startsWith("<")) {
+                System.out.println("Warning: Unused method detected in " + currClassName + ": Method" + simpleName + "()");
+            }
+        }
+        super.visitEnd();
+    }
+
+
+
+}
+/**
+ * CheckNullReturn
+ *
+ * This check looks to see if methods to detect if they return null explicitly.
+ *
+ * Rationale:
+ *  - Methods that return null can lead to NullPointerExceptions if callers
+ *    are not careful, decreasing code safety and maintainability.
+ *  - Flagging such methods encourages developers to use alternatives like
+ *    Optional or default objects, or to document the null-return contract.
+ *
+ * Implementation details:
+ *  - During method visits, the bytecode instructions are analyzed.
+ *  - If a method contains a RETURN of a null constant (ACONST_NULL followed by ARETURN),
+ *    it is flagged as potentially unsafe.
+ *  - Synthetic, compiler-generated, or void-returning methods are ignored.
+ *  - At the end of the visit, all flagged methods are reported.
+ */
+class NullReturnCheck extends ClassVisitor {
+
+    private String currClassName;
+    private final java.util.Set<String> flaggedMethods = new java.util.HashSet<>();
+
+    public NullReturnCheck(int api) {
+        super(api);
+    }
+
+    @Override
+    public void visit(int version, int access, String name, String signature, String superName, String[] interfaces) {
+        int idx = name.lastIndexOf('/');
+        currClassName = (idx >= 0) ? name.substring(idx + 1) : name;
+        super.visit(version, access, name, signature, superName, interfaces);
+    }
+
+    @Override
+    public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+
+        MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
+
+        return new MethodVisitor(api, mv) {
+            @Override
+            public void visitInsn(int opcode) {
+                // Detect explicit null returns: ACONST_NULL followed by ARETURN
+                if (opcode == Opcodes.ARETURN) {
+                    // The previous instruction must be ACONST_NULL
+                    // ASM 9+ allows using MethodVisitor without tracking stack,
+                    // so we need a simple trick: override visitInsn and flag ARETURN if previous instruction was null
+                    // We'll use a small state variable to track
+                    if (lastWasNull) {
+                        flaggedMethods.add(name + descriptor);
+                    }
+                }
+
+                // Track if the last instruction was pushing null
+                lastWasNull = (opcode == Opcodes.ACONST_NULL);
+
+                super.visitInsn(opcode);
+            }
+
+            private boolean lastWasNull = false;
+        };
+    }
+
+    @Override
+    public void visitEnd() {
+        for (String method : flaggedMethods) {
+            int idx = method.indexOf('(');
+            String simpleName = (idx >= 0) ? method.substring(0, idx) : method;
+            System.out.println("Warning: Method in " + currClassName + " returns null: " + simpleName + "()");
+        }
+        super.visitEnd();
+    }
+}

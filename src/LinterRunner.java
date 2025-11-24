@@ -1,6 +1,8 @@
 package jellybeans;
 
 import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.Opcodes;
+
 import java.nio.file.*;
 import java.io.IOException;
 import java.util.List;
@@ -24,6 +26,9 @@ public class LinterRunner {
             reader.accept(new NonPublicConstructorCheck(), 0);
             reader.accept(new LongMethodCheck(50), 0);
             // JJ' checks
+            reader.accept(new MagicNumberCheck(), 0);
+            reader.accept(new UnusedFieldOrMethodCheck(Opcodes.ASM9), 0);
+            reader.accept(new NullReturnCheck(Opcodes.ASM9),0);
         }
     }
 }
