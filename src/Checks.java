@@ -334,97 +334,88 @@ class MagicNumberCheck extends ClassVisitor {
 
 }
 /**
- * UnusedFieldOrMethodCheck
+ * UnusedFieldCheck
  *
  * This check inspects that:
- *  - There are no fields or methods that are declared but never read/written/invoked within the class
+ *  - There are no fields that are declared but never read/written/invoked within the class
  *
  * Rationale:
- *  - Unused fields/methods create unnecessary clutter and make maintainability harder
+ *  - Unused fields create unnecessary clutter and make maintainability harder
  * Implementation details:
- *  - During the class visit, all declared fields and methods are collected.
+ *  - During the class visit, all declared fields are collected.
  *  - Each time a field or method is referenced (GETFIELD, PUTFIELD, INVOKEVIRTUAL, etc.),
  *    it is marked as "used".
  *  - At the end of the visit (visitEnd()), the check compares the sets of declared
  *     members and used members.
- *  - Any field or method that was never marked as used is reported as unused.
+ *  - Any field that was never marked as used is reported as unused.
  */
 
-class UnusedFieldOrMethodCheck extends ClassVisitor{
-
-    private final java.util.Set<String> declaredFields = new java.util.HashSet<>();
-    private final java.util.Set<String> declaredMethods = new java.util.HashSet<>();
+class UnusedFieldCheck extends ClassVisitor{
+     private final java.util.Set<String> declaredFields = new java.util.HashSet<>();
     private final java.util.Set<String> usedFields = new java.util.HashSet<>();
-    private final java.util.Set<String> usedMethods = new java.util.HashSet<>();
 
     private String currClassName;
 
-    public UnusedFieldOrMethodCheck(int api) {
+    public UnusedFieldCheck(int api) {
         super(api);
     }
+
     @Override
-    public void visit(int version, int access, String name, String signature, String superName, String[] interfaces) {
-        // Extract simple class name from internal name
+    public void visit(int version, int access, String name,
+                      String signature, String superName, String[] interfaces) {
         int idx = name.lastIndexOf('/');
         currClassName = (idx >= 0) ? name.substring(idx + 1) : name;
         super.visit(version, access, name, signature, superName, interfaces);
     }
 
     @Override
-    public FieldVisitor visitField(int access, String name, String descriptor, String signature, Object value) {
+    public FieldVisitor visitField(int access, String name,
+                                   String descriptor, String signature, Object value) {
         declaredFields.add(name + ":" + descriptor);
         return super.visitField(access, name, descriptor, signature, value);
     }
+
     @Override
-    public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
-        declaredMethods.add(name + descriptor);
+    public MethodVisitor visitMethod(int access, String name, String descriptor,
+                                     String signature, String[] exceptions) {
 
         MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
 
+        boolean inConstructor = name.equals("<init>");
+
         return new MethodVisitor(api, mv) {
-            @Override
-            public void visitFieldInsn(int opcode, String owner, String name, String descriptor) {
-                usedFields.add(name + ":" + descriptor);
-                super.visitFieldInsn(opcode, owner, name, descriptor);
-            }
 
             @Override
-            public void visitMethodInsn(int opcode, String owner, String name, String descriptor, boolean isInterface) {
-                usedMethods.add(name + descriptor);
-                super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
+            public void visitFieldInsn(int opcode, String owner, String fldName, String desc) {
+
+                // want to ignore field writes in constructors
+                if (inConstructor && opcode == Opcodes.PUTFIELD) {
+                    super.visitFieldInsn(opcode, owner, fldName, desc);
+                    return;
+                }
+
+                // All other accesses count as real "usage"
+                usedFields.add(fldName + ":" + desc);
+
+                super.visitFieldInsn(opcode, owner, fldName, desc);
             }
         };
     }
 
     @Override
     public void visitEnd() {
-        //only keep unused fields
         java.util.Set<String> unusedFields = new java.util.HashSet<>(declaredFields);
         unusedFields.removeAll(usedFields);
 
-        //only keep unused methods
-        java.util.Set<String> unusedMethods = new java.util.HashSet<>(declaredMethods);
-        unusedMethods.removeAll(usedMethods);
-
         for (String field : unusedFields) {
             int idx = field.indexOf(':');
-            String simpleName = (idx >= 0) ? field.substring(0, idx) : field;
-            System.out.println("Warning: Unused field detected in " + currClassName + ": Method" + simpleName);
+            String fieldName = (idx >= 0) ? field.substring(0, idx) : field;
+            System.out.println("Warning: Unused field detected in " +
+                               currClassName + ": " + fieldName);
         }
 
-        for (String method : unusedMethods) {
-            int idx = method.indexOf('(');        // position of argument list
-            String simpleName = (idx >= 0) ? method.substring(0, idx) : method;
-
-            //skip compiler generated method names
-            if (!simpleName.startsWith("<")) {
-                System.out.println("Warning: Unused method detected in " + currClassName + ": Method" + simpleName + "()");
-            }
-        }
         super.visitEnd();
     }
-
-
 
 }
 /**

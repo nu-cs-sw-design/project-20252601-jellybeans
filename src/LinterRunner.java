@@ -27,7 +27,7 @@ public class LinterRunner {
             reader.accept(new LongMethodCheck(50), 0);
             // JJ' checks
             reader.accept(new MagicNumberCheck(), 0);
-            reader.accept(new UnusedFieldOrMethodCheck(Opcodes.ASM9), 0);
+            reader.accept(new UnusedFieldCheck(Opcodes.ASM9), 0);
             reader.accept(new NullReturnCheck(Opcodes.ASM9),0);
         }
     }
