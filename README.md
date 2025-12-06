@@ -1,4 +1,4 @@
-# Project: NAME
+# Project: Well-designed Linter
 
 ## Contributors
 
