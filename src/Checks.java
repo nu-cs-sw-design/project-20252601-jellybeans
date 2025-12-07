@@ -2,21 +2,55 @@ package jellybeans;
 
 import org.objectweb.asm.*;
 
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 
 /**
+ * All check implementations live in this file for simplicity.
+ * Each check:
+ *   - implements LintCheck (Strategy pattern)
+ *   - extends ClassVisitor to leverage ASM's Visitor API
+ *   - reports findings via Reporter instead of printing directly
+ */
+
+/* ============================================================
+   1. NamingConventionCheck
+   ============================================================ */
+/**
  * NamingConventionCheck
+ *
+ * Enforces simple naming conventions on classes, methods, and fields.
+ *
  * This check inspects:
  *  - Class names: must start with an uppercase letter.
  *  - Method names: must start with a lowercase letter (constructors are ignored).
  *  - Field names: must start with a lowercase letter.
  */
+class NamingConventionCheck extends ClassVisitor implements LintCheck {
 
-class NamingConventionCheck extends ClassVisitor {
+    private Reporter reporter;
+    private String simpleClassName;
 
-    private String simpleName;
-
-    public NamingConventionCheck() {
+    NamingConventionCheck() {
         super(Opcodes.ASM9);
+    }
+
+    @Override
+    public String name() {
+        return "NamingConvention";
+    }
+
+    @Override
+    public void runOnClass(ClassReader reader, Reporter reporter) {
+        this.reporter = reporter;
+        this.simpleClassName = null;
+        reader.accept(this, 0);
+    }
+
+    private void report(String message) {
+        reporter.report(name(), simpleClassName, message);
     }
 
     @Override
@@ -26,13 +60,11 @@ class NamingConventionCheck extends ClassVisitor {
                       String signature,
                       String superName,
                       String[] interfaces) {
-
         int idx = name.lastIndexOf('/');
-        simpleName = (idx >= 0) ? name.substring(idx + 1) : name;
+        simpleClassName = (idx >= 0) ? name.substring(idx + 1) : name;
 
-        // Class name must start with uppercase
-        if (!simpleName.isEmpty() && !Character.isUpperCase(simpleName.charAt(0))) {
-            System.out.printf("[Naming] Class '%s' should start with uppercase.%n", simpleName);
+        if (!simpleClassName.isEmpty() && !Character.isUpperCase(simpleClassName.charAt(0))) {
+            report("Class name should start with an uppercase letter.");
         }
 
         super.visit(version, access, name, signature, superName, interfaces);
@@ -44,11 +76,9 @@ class NamingConventionCheck extends ClassVisitor {
                                      String descriptor,
                                      String signature,
                                      String[] exceptions) {
-        // Skip constructors
         if (!name.equals("<init>") && !name.equals("<clinit>")) {
             if (!name.isEmpty() && !Character.isLowerCase(name.charAt(0))) {
-                System.out.printf("[Naming] Method '%s' in class '%s' should start with lowercase.%n",
-                        name, simpleName);
+                report("Method '" + name + "' should start with a lowercase letter.");
             }
         }
         return super.visitMethod(access, name, descriptor, signature, exceptions);
@@ -60,45 +90,59 @@ class NamingConventionCheck extends ClassVisitor {
                                    String descriptor,
                                    String signature,
                                    Object value) {
-
         if (!name.isEmpty() && !Character.isLowerCase(name.charAt(0))) {
-            System.out.printf("[Naming] Field '%s' in class '%s' should start with lowercase.%n",
-                    name, simpleName);
+            report("Field '" + name + "' should start with a lowercase letter.");
         }
-
         return super.visitField(access, name, descriptor, signature, value);
     }
 }
 
 
+/* ============================================================
+   2. NonPublicConstructorCheck
+   ============================================================ */
 /**
  * NonPublicConstructorCheck
+ *
+ * Detects public classes that cannot be constructed publicly.
  *
  * A warning is issued when ALL of the following conditions are true:
  *  - The class is public.
  *  - The class is NOT abstract and NOT an interface.
  *  - The class declares at least one constructor.
- *  - None of its constructors are public or protected (all are private or package-private).
- *
- * Rationale:
- *  - A public class with only private constructors may indicate an accidental access-level mistake,
- *    making the class impossible to instantiate from outside its package.
- *
- * Implementation details:
- *  - Tracks constructor access modifiers by overriding visitMethod().
- *  - Evaluates the final condition in visitEnd(), after the whole class has been processed.
+ *  - None of its constructors are public or protected.
  */
+class NonPublicConstructorCheck extends ClassVisitor implements LintCheck {
 
-class NonPublicConstructorCheck extends ClassVisitor {
-
-    private String simpleName;
+    private Reporter reporter;
+    private String simpleClassName;
     private boolean isPublicClass;
     private boolean isAbstractOrInterface;
-    private boolean hasAnyCtor = false;
-    private boolean hasPublicOrProtectedCtor = false;
+    private boolean hasAnyCtor;
+    private boolean hasPublicOrProtectedCtor;
 
-    public NonPublicConstructorCheck() {
+    NonPublicConstructorCheck() {
         super(Opcodes.ASM9);
+    }
+
+    @Override
+    public String name() {
+        return "NonPublicConstructor";
+    }
+
+    @Override
+    public void runOnClass(ClassReader reader, Reporter reporter) {
+        this.reporter = reporter;
+        this.simpleClassName = null;
+        this.isPublicClass = false;
+        this.isAbstractOrInterface = false;
+        this.hasAnyCtor = false;
+        this.hasPublicOrProtectedCtor = false;
+        reader.accept(this, 0);
+    }
+
+    private void report(String message) {
+        reporter.report(name(), simpleClassName, message);
     }
 
     @Override
@@ -108,14 +152,12 @@ class NonPublicConstructorCheck extends ClassVisitor {
                       String signature,
                       String superName,
                       String[] interfaces) {
-
         int idx = name.lastIndexOf('/');
-        simpleName = (idx >= 0) ? name.substring(idx + 1) : name;
+        simpleClassName = (idx >= 0) ? name.substring(idx + 1) : name;
 
         isPublicClass = (access & Opcodes.ACC_PUBLIC) != 0;
         boolean isInterface = (access & Opcodes.ACC_INTERFACE) != 0;
         boolean isAbstract = (access & Opcodes.ACC_ABSTRACT) != 0;
-
         isAbstractOrInterface = isInterface || isAbstract;
 
         super.visit(version, access, name, signature, superName, interfaces);
@@ -127,13 +169,11 @@ class NonPublicConstructorCheck extends ClassVisitor {
                                      String descriptor,
                                      String signature,
                                      String[] exceptions) {
-
         if (name.equals("<init>")) {
             hasAnyCtor = true;
 
             boolean isPublic = (access & Opcodes.ACC_PUBLIC) != 0;
             boolean isProtected = (access & Opcodes.ACC_PROTECTED) != 0;
-
             if (isPublic || isProtected) {
                 hasPublicOrProtectedCtor = true;
             }
@@ -145,35 +185,49 @@ class NonPublicConstructorCheck extends ClassVisitor {
     @Override
     public void visitEnd() {
         if (isPublicClass && !isAbstractOrInterface && hasAnyCtor && !hasPublicOrProtectedCtor) {
-            System.out.printf("[Constructor] Public class '%s' has no public/protected constructors.%n",
-                    simpleName);
+            report("Public class has no public or protected constructors.");
         }
         super.visitEnd();
     }
 }
 
 
+/* ============================================================
+   3. LongMethodCheck
+   ============================================================ */
 /**
  * LongMethodCheck
  *
- * This check measures:
- *  - Total number of bytecode instructions in each non-constructor method.
- *  - If the count exceeds `maxInstructions`, a warning is printed.
- *
- * Implementation details:
- *  - Overrides a set of MethodVisitor instruction callbacks (visitInsn, visitVarInsn, etc.).
- *  - Increments an internal counter for each instruction encountered.
- *  - Final check is performed in visitEnd() once the method is fully visited.
+ * Flags methods whose bytecode instruction count exceeds a configurable threshold.
+ * Uses instruction count as a proxy for complexity/length.
  */
+class LongMethodCheck extends ClassVisitor implements LintCheck {
 
-class LongMethodCheck extends ClassVisitor {
-
+    private Reporter reporter;
     private String simpleClassName;
     private final int maxInstructions;
 
-    public LongMethodCheck(int maxInstructions) {
+    LongMethodCheck(int maxInstructions) {
         super(Opcodes.ASM9);
         this.maxInstructions = maxInstructions;
+    }
+
+    @Override
+    public String name() {
+        return "LongMethod";
+    }
+
+    @Override
+    public void runOnClass(ClassReader reader, Reporter reporter) {
+        this.reporter = reporter;
+        this.simpleClassName = null;
+        reader.accept(this, 0);
+    }
+
+    private void report(String methodName, int count) {
+        String msg = "Method '" + methodName + "' has " + count
+                + " bytecode instructions (limit " + maxInstructions + ").";
+        reporter.report(name(), simpleClassName, msg);
     }
 
     @Override
@@ -183,10 +237,108 @@ class LongMethodCheck extends ClassVisitor {
                       String signature,
                       String superName,
                       String[] interfaces) {
-
         int idx = name.lastIndexOf('/');
         simpleClassName = (idx >= 0) ? name.substring(idx + 1) : name;
+        super.visit(version, access, name, signature, superName, interfaces);
+    }
 
+    @Override
+    public MethodVisitor visitMethod(int access,
+                                     String name,
+                                     String descriptor,
+                                     String signature,
+                                     String[] exceptions) {
+        if (name.equals("<init>") || name.equals("<clinit>")) {
+            return super.visitMethod(access, name, descriptor, signature, exceptions);
+        }
+
+        MethodVisitor parent = super.visitMethod(access, name, descriptor, signature, exceptions);
+
+        return new MethodVisitor(api, parent) {
+            int instructionCount = 0;
+
+            @Override public void visitInsn(int opcode) { instructionCount++; super.visitInsn(opcode); }
+            @Override public void visitIntInsn(int opcode, int operand) { instructionCount++; super.visitIntInsn(opcode, operand); }
+            @Override public void visitVarInsn(int opcode, int var) { instructionCount++; super.visitVarInsn(opcode, var); }
+            @Override public void visitTypeInsn(int opcode, String type) { instructionCount++; super.visitTypeInsn(opcode, type); }
+            @Override public void visitFieldInsn(int opcode, String owner, String name, String desc) { instructionCount++; super.visitFieldInsn(opcode, owner, name, desc); }
+            @Override public void visitMethodInsn(int opcode, String owner, String name, String desc, boolean itf) { instructionCount++; super.visitMethodInsn(opcode, owner, name, desc, itf); }
+            @Override public void visitJumpInsn(int opcode, Label label) { instructionCount++; super.visitJumpInsn(opcode, label); }
+            @Override public void visitLdcInsn(Object value) { instructionCount++; super.visitLdcInsn(value); }
+
+            @Override
+            public void visitEnd() {
+                if (instructionCount > maxInstructions) {
+                    report(name, instructionCount);
+                }
+                super.visitEnd();
+            }
+        };
+    }
+}
+
+
+/* ============================================================
+   4. MagicNumberCheck
+   ============================================================ */
+/**
+ * MagicNumberCheck
+ *
+ * Flags "magic numbers" appearing in code as literals, except for a small
+ * whitelist of common values (-1, 0, 1).
+ *
+ * Currently checks:
+ *  - BIPUSH/SIPUSH integer instructions
+ *  - LDC with numeric constants
+ */
+class MagicNumberCheck extends ClassVisitor implements LintCheck {
+
+    private Reporter reporter;
+    private String simpleClassName;
+
+    MagicNumberCheck() {
+        super(Opcodes.ASM9);
+    }
+
+    @Override
+    public String name() {
+        return "MagicNumber";
+    }
+
+    @Override
+    public void runOnClass(ClassReader reader, Reporter reporter) {
+        this.reporter = reporter;
+        this.simpleClassName = null;
+        reader.accept(this, 0);
+    }
+
+    private void report(String methodName, Number value) {
+        String msg = "Magic number " + value + " used in method '" + methodName
+                + "'. Consider extracting a named constant.";
+        reporter.report(name(), simpleClassName, msg);
+    }
+
+    private boolean isWhitelistedNumber(Number n) {
+        if (n instanceof Integer || n instanceof Long) {
+            long v = n.longValue();
+            return v == -1L || v == 0L || v == 1L;
+        }
+        if (n instanceof Float || n instanceof Double) {
+            double v = n.doubleValue();
+            return v == 0.0 || v == 1.0;
+        }
+        return false;
+    }
+
+    @Override
+    public void visit(int version,
+                      int access,
+                      String name,
+                      String signature,
+                      String superName,
+                      String[] interfaces) {
+        int idx = name.lastIndexOf('/');
+        simpleClassName = (idx >= 0) ? name.substring(idx + 1) : name;
         super.visit(version, access, name, signature, superName, interfaces);
     }
 
@@ -204,48 +356,77 @@ class LongMethodCheck extends ClassVisitor {
         MethodVisitor parent = super.visitMethod(access, name, descriptor, signature, exceptions);
 
         return new MethodVisitor(api, parent) {
-            int instructionCount = 0;
-
-            @Override public void visitInsn(int opcode) { instructionCount++; super.visitInsn(opcode); }
-            @Override public void visitIntInsn(int opcode, int operand) { instructionCount++; super.visitIntInsn(opcode, operand); }
-            @Override public void visitVarInsn(int opcode, int var) { instructionCount++; super.visitVarInsn(opcode, var); }
-            @Override public void visitTypeInsn(int opcode, String type) { instructionCount++; super.visitTypeInsn(opcode, type); }
-            @Override public void visitFieldInsn(int opcode, String owner, String name, String desc) { instructionCount++; super.visitFieldInsn(opcode, owner, name, desc); }
-            @Override public void visitMethodInsn(int opcode, String owner, String name, String desc, boolean itf) { instructionCount++; super.visitMethodInsn(opcode, owner, name, desc, itf); }
-            @Override public void visitJumpInsn(int opcode, Label label) { instructionCount++; super.visitJumpInsn(opcode, label); }
+            @Override
+            public void visitIntInsn(int opcode, int operand) {
+                if (!isWhitelistedNumber(operand)) {
+                    report(name, operand);
+                }
+                super.visitIntInsn(opcode, operand);
+            }
 
             @Override
-            public void visitEnd() {
-                if (instructionCount > maxInstructions) {
-                    System.out.printf("[LongMethod] Method '%s' in class '%s' has %d instructions (limit %d).%n",
-                            name, simpleClassName, instructionCount, maxInstructions);
+            public void visitLdcInsn(Object value) {
+                if (value instanceof Number num && !isWhitelistedNumber(num)) {
+                    report(name, num);
                 }
-                super.visitEnd();
+                super.visitLdcInsn(value);
             }
         };
     }
 }
 
+
+/* ============================================================
+   5. UnusedFieldOrMethodCheck
+   ============================================================ */
 /**
- * MagicNumberCheck
+ * UnusedFieldOrMethodCheck
  *
- * This check inspects:
- *  - There is no use of "magic numbers" in methods or class fields (except for constants like 0,1,-1, etc.)
- *  - Numeric values must be stored in a named variable/constant (not hardcoded directly within the code)
- * Implementation details:
- *  - Tracks constructor access modifiers by overriding visitMethod().
- *  - Evaluates the final condition in visitEnd(), after the whole class has been processed.
+ * Attempts to detect fields and methods that are declared but never used
+ * within the same class.
+ *
+ * For simplicity and to reduce false positives, this implementation focuses
+ * on private fields and private methods (excluding constructors and
+ * static initializers).
  */
-class MagicNumberCheck extends ClassVisitor {
+class UnusedFieldOrMethodCheck extends ClassVisitor implements LintCheck {
 
-    //holds name of class curr visited
-    private String simpleName;
+    private Reporter reporter;
+    private String simpleClassName;
+    private String classInternalName;
 
-    private static final java.util.Set<Number> ALLOWED_Values = java.util.Set.of(-1, 0, 1);
+    private final Set<String> privateFields = new HashSet<>();
+    private final Set<String> usedFields = new HashSet<>();
 
-    //calls parent constructor for ASM API
-    public MagicNumberCheck() {
+    // methods are tracked by "name:descriptor"
+    private final Set<String> privateMethods = new HashSet<>();
+    private final Set<String> usedMethods = new HashSet<>();
+
+    UnusedFieldOrMethodCheck() {
         super(Opcodes.ASM9);
+    }
+
+    @Override
+    public String name() {
+        return "UnusedFieldOrMethod";
+    }
+
+    @Override
+    public void runOnClass(ClassReader reader, Reporter reporter) {
+        this.reporter = reporter;
+        this.simpleClassName = null;
+        this.classInternalName = null;
+
+        privateFields.clear();
+        usedFields.clear();
+        privateMethods.clear();
+        usedMethods.clear();
+
+        reader.accept(this, 0);
+    }
+
+    private void report(String message) {
+        reporter.report(name(), simpleClassName, message);
     }
 
     @Override
@@ -255,228 +436,169 @@ class MagicNumberCheck extends ClassVisitor {
                       String signature,
                       String superName,
                       String[] interfaces) {
-        this.simpleName = name;
-        super.visit(version, access, name, signature, superName, interfaces);
-    }
-
-    @Override
-    public MethodVisitor visitMethod(int access, String name, String desc,
-                                     String signature, String[] exceptions){
-        if (name.equals("<init>") || name.equals("<clinit>")) {
-            return super.visitMethod(access, name, desc, signature, exceptions);
-        }
-
-        MethodVisitor mv = super.visitMethod(access, name, desc, signature, exceptions);
-
-        return new MethodVisitor(api, mv) {
-
-            @Override
-            public void visitLdcInsn(Object value) {
-                if (value instanceof Number) {
-                    Number num = (Number) value;
-                    check(num, name);
-                }
-                super.visitLdcInsn(value);
-            }
-
-            @Override
-            public void visitIntInsn(int opcode, int operand) {
-                if (opcode == Opcodes.BIPUSH || opcode == Opcodes.SIPUSH) {
-                    check(operand, name);
-                }
-                super.visitIntInsn(opcode, operand);
-            }
-
-            @Override
-            public void visitInsn(int opcode) {
-                Integer val = null;
-
-                switch (opcode) {
-                    case Opcodes.ICONST_M1:
-                        val = -1;
-                        break;
-                    case Opcodes.ICONST_0:
-                        val = 0;
-                        break;
-                    case Opcodes.ICONST_1:
-                        val = 1;
-                        break;
-                    case Opcodes.ICONST_2:
-                        val = 2;
-                        break;
-                    case Opcodes.ICONST_3:
-                        val = 3;
-                        break;
-                    case Opcodes.ICONST_4:
-                        val = 4;
-                        break;
-                    case Opcodes.ICONST_5:
-                        val = 5;
-                        break;
-                    default:
-                        // leave val = null
-                        break;
-                }
-
-                if (val != null) {
-                    check(val, name);
-                }
-                super.visitInsn(opcode);
-            }
-
-            private void check(Number num, String method) {
-                if (!ALLOWED_Values.contains(num)) {
-                    System.out.printf("Warning: Magic number %s found in %s.%s()%n", num, simpleName, method);
-                }
-            }
-        };
-    }
-
-}
-/**
- * UnusedFieldCheck
- *
- * This check inspects that:
- *  - There are no fields that are declared but never read/written/invoked within the class
- *
- * Rationale:
- *  - Unused fields create unnecessary clutter and make maintainability harder
- * Implementation details:
- *  - During the class visit, all declared fields are collected.
- *  - Each time a field or method is referenced (GETFIELD, PUTFIELD, INVOKEVIRTUAL, etc.),
- *    it is marked as "used".
- *  - At the end of the visit (visitEnd()), the check compares the sets of declared
- *     members and used members.
- *  - Any field that was never marked as used is reported as unused.
- */
-
-class UnusedFieldCheck extends ClassVisitor{
-     private final java.util.Set<String> declaredFields = new java.util.HashSet<>();
-    private final java.util.Set<String> usedFields = new java.util.HashSet<>();
-
-    private String currClassName;
-
-    public UnusedFieldCheck(int api) {
-        super(api);
-    }
-
-    @Override
-    public void visit(int version, int access, String name,
-                      String signature, String superName, String[] interfaces) {
+        classInternalName = name;
         int idx = name.lastIndexOf('/');
-        currClassName = (idx >= 0) ? name.substring(idx + 1) : name;
+        simpleClassName = (idx >= 0) ? name.substring(idx + 1) : name;
         super.visit(version, access, name, signature, superName, interfaces);
     }
 
     @Override
-    public FieldVisitor visitField(int access, String name,
-                                   String descriptor, String signature, Object value) {
-        declaredFields.add(name + ":" + descriptor);
+    public FieldVisitor visitField(int access,
+                                   String name,
+                                   String descriptor,
+                                   String signature,
+                                   Object value) {
+        if ((access & Opcodes.ACC_PRIVATE) != 0) {
+            privateFields.add(name);
+        }
         return super.visitField(access, name, descriptor, signature, value);
     }
 
     @Override
-    public MethodVisitor visitMethod(int access, String name, String descriptor,
-                                     String signature, String[] exceptions) {
+    public MethodVisitor visitMethod(int access,
+                                     String name,
+                                     String descriptor,
+                                     String signature,
+                                     String[] exceptions) {
 
-        MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
+        boolean isConstructor = name.equals("<init>") || name.equals("<clinit>");
+        if ((access & Opcodes.ACC_PRIVATE) != 0 && !isConstructor) {
+            privateMethods.add(name + ":" + descriptor);
+        }
 
-        boolean inConstructor = name.equals("<init>");
+        MethodVisitor parent = super.visitMethod(access, name, descriptor, signature, exceptions);
 
-        return new MethodVisitor(api, mv) {
+        return new MethodVisitor(api, parent) {
+            @Override
+            public void visitFieldInsn(int opcode,
+                                       String owner,
+                                       String fieldName,
+                                       String fieldDesc) {
+                if (owner.equals(classInternalName)) {
+                    usedFields.add(fieldName);
+                }
+                super.visitFieldInsn(opcode, owner, fieldName, fieldDesc);
+            }
 
             @Override
-            public void visitFieldInsn(int opcode, String owner, String fldName, String desc) {
-
-                // want to ignore field writes in constructors
-                if (inConstructor && opcode == Opcodes.PUTFIELD) {
-                    super.visitFieldInsn(opcode, owner, fldName, desc);
-                    return;
+            public void visitMethodInsn(int opcode,
+                                        String owner,
+                                        String methodName,
+                                        String methodDesc,
+                                        boolean itf) {
+                if (owner.equals(classInternalName)) {
+                    usedMethods.add(methodName + ":" + methodDesc);
                 }
-
-                // All other accesses count as real "usage"
-                usedFields.add(fldName + ":" + desc);
-
-                super.visitFieldInsn(opcode, owner, fldName, desc);
+                super.visitMethodInsn(opcode, owner, methodName, methodDesc, itf);
             }
         };
     }
 
     @Override
     public void visitEnd() {
-        java.util.Set<String> unusedFields = new java.util.HashSet<>(declaredFields);
-        unusedFields.removeAll(usedFields);
+        for (String field : privateFields) {
+            if (!usedFields.contains(field)) {
+                report("Private field '" + field + "' appears to be unused.");
+            }
+        }
 
-        for (String field : unusedFields) {
-            int idx = field.indexOf(':');
-            String fieldName = (idx >= 0) ? field.substring(0, idx) : field;
-            System.out.println("Warning: Unused field detected in " +
-                               currClassName + ": " + fieldName);
+        for (String methodKey : privateMethods) {
+            if (!usedMethods.contains(methodKey)) {
+                String methodName = methodKey.substring(0, methodKey.indexOf(':'));
+                report("Private method '" + methodName + "' appears to be unused.");
+            }
         }
 
         super.visitEnd();
     }
-
 }
+
+
+/* ============================================================
+   6. NullReturnCheck
+   ============================================================ */
 /**
- * CheckNullReturn
+ * NullReturnCheck
  *
- * This check looks to see if methods to detect if they return null explicitly.
- *
- * Rationale:
- *  - Methods that return null can lead to exceptions if callers are not careful (default objects or Optional usage is preferred)
- *
- * Implementation details:
- *  - During method visits, the bytecode instructions are analyzed.
- *  - If a method contains a return of a null constant, it is flagged with a warning
- *  - void methods are ignored as well as compiler methods
- *  - Flagged methods are printed with a warning
+ * Flags methods that return null directly (ACONST_NULL followed by ARETURN).
+ * This is a conservative heuristic to detect potential nullability issues.
  */
-class NullReturnCheck extends ClassVisitor {
+class NullReturnCheck extends ClassVisitor implements LintCheck {
 
-    private String currClassName;
-    private final java.util.Set<String> flaggedMethods = new java.util.HashSet<>();
+    private Reporter reporter;
+    private String simpleClassName;
 
-    public NullReturnCheck(int api) {
-        super(api);
+    NullReturnCheck() {
+        super(Opcodes.ASM9);
     }
 
     @Override
-    public void visit(int version, int access, String name, String signature, String superName, String[] interfaces) {
+    public String name() {
+        return "NullReturn";
+    }
+
+    @Override
+    public void runOnClass(ClassReader reader, Reporter reporter) {
+        this.reporter = reporter;
+        this.simpleClassName = null;
+        reader.accept(this, 0);
+    }
+
+    private void report(String methodName) {
+        String msg = "Method '" + methodName + "' returns null directly.";
+        reporter.report(name(), simpleClassName, msg);
+    }
+
+    @Override
+    public void visit(int version,
+                      int access,
+                      String name,
+                      String signature,
+                      String superName,
+                      String[] interfaces) {
         int idx = name.lastIndexOf('/');
-        currClassName = (idx >= 0) ? name.substring(idx + 1) : name;
+        simpleClassName = (idx >= 0) ? name.substring(idx + 1) : name;
         super.visit(version, access, name, signature, superName, interfaces);
     }
 
     @Override
-    public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+    public MethodVisitor visitMethod(int access,
+                                     String name,
+                                     String descriptor,
+                                     String signature,
+                                     String[] exceptions) {
 
-        MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
+        if (name.equals("<init>") || name.equals("<clinit>")) {
+            return super.visitMethod(access, name, descriptor, signature, exceptions);
+        }
 
-        return new MethodVisitor(api, mv) {
+        MethodVisitor parent = super.visitMethod(access, name, descriptor, signature, exceptions);
+
+        return new MethodVisitor(api, parent) {
+            boolean sawNullBeforeReturn = false;
+            boolean foundNullReturn = false;
+
             @Override
             public void visitInsn(int opcode) {
-                if (opcode == Opcodes.ARETURN) {
-                    if (lastWasNull) {
-                        flaggedMethods.add(name + descriptor);
-                    }
+                if (opcode == Opcodes.ACONST_NULL) {
+                    sawNullBeforeReturn = true;
+                } else if (opcode == Opcodes.ARETURN && sawNullBeforeReturn) {
+                    foundNullReturn = true;
+                } else {
+                    // Any other instruction between ACONST_NULL and ARETURN
+                    // cancels our simple "direct null" heuristic.
+                    sawNullBeforeReturn = false;
                 }
-                lastWasNull = (opcode == Opcodes.ACONST_NULL);
-
                 super.visitInsn(opcode);
             }
 
-            private boolean lastWasNull = false;
+            @Override
+            public void visitEnd() {
+                if (foundNullReturn) {
+                    report(name);
+                }
+                super.visitEnd();
+            }
         };
-    }
-
-    @Override
-    public void visitEnd() {
-        for (String method : flaggedMethods) {
-            int idx = method.indexOf('(');
-            String simpleName = (idx >= 0) ? method.substring(0, idx) : method;
-            System.out.println("Warning: Method in " + currClassName + " returns null: " + simpleName + "()");
-        }
-        super.visitEnd();
     }
 }

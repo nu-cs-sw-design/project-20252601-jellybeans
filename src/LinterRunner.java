@@ -1,13 +1,28 @@
 package jellybeans;
 
 import org.objectweb.asm.ClassReader;
-import org.objectweb.asm.Opcodes;
 
-import java.nio.file.*;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
+/**
+ * LinterRunner
+ *
+ * Orchestrates running a set of LintCheck strategies on all .class files
+ * under a given root path. It does not know the details of any specific
+ * check, or how results are presented to the user.
+ */
 public class LinterRunner {
+
+    private final List<LintCheck> checks;
+    private final Reporter reporter;
+
+    public LinterRunner(List<LintCheck> checks, Reporter reporter) {
+        this.checks = checks;
+        this.reporter = reporter;
+    }
 
     public void runOnPath(Path root) throws IOException {
         List<Path> classFiles = FileUtils.collectClassFiles(root);
@@ -20,15 +35,11 @@ public class LinterRunner {
             byte[] bytes = Files.readAllBytes(classFile);
             ClassReader reader = new ClassReader(bytes);
 
-            System.out.println("=== Analyzing " + classFile + " ===");
-            // ellie's checks
-            reader.accept(new NamingConventionCheck(), 0);
-            reader.accept(new NonPublicConstructorCheck(), 0);
-            reader.accept(new LongMethodCheck(50), 0);
-            // JJ' checks
-            reader.accept(new MagicNumberCheck(), 0);
-            reader.accept(new UnusedFieldCheck(Opcodes.ASM9), 0);
-            reader.accept(new NullReturnCheck(Opcodes.ASM9),0);
+            reporter.startFile(classFile);
+            for (LintCheck check : checks) {
+                check.runOnClass(reader, reporter);
+            }
+            reporter.endFile(classFile);
         }
     }
 }
