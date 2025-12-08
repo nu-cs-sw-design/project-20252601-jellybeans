@@ -59,6 +59,7 @@ package src{
         -hasAnyCtor: boolean
         -hasPublicOrProtectedCtor: boolean
 
+        ~NonPublicConstructorCheck()
         +name(): String
         +runOnClass(reader: ClassReader, reporter: Reporter): void
         -report(message: String): void
@@ -95,52 +96,95 @@ package src{
         -simpleClassName: String
         -classInternalName: String
         -{final} privateFields: Set<String>
-        -{final} usedFields
+        -{final} usedFields: Set<String>
 
         ~UnusedFieldCheck()
         +name(): String
         +runOnClass(reader: ClassReader, reporter: Reporter): void
+        -report(message: String): void
+        +visit(version: int, access: int, name: String, signature: String, superName: String, interfaces: String[]): void
+        +visitField(access: int, name: String, descriptor: String, signature: String, value: Object): FieldVisitor
+        +visitMethod(access: int, name: String, descriptor: String, signature: String, exceptions: String[]): MethodVisitor
+        +visitEnd(): void
 
     }
-    class NullReturnCheck
+    class NullReturnCheck{
+        -reporter: Reporter
+        -simpleClassName: String
+
+        ~NullReturnCheck()
+        +name(): String
+        +runOnClass(reader: ClassReader, reporter: Reporter): void
+        -report(methodName: String): void
+        +visit(version: int, access: int, name: String, signature: String, superName: String, interfaces: String[]): void
+        +visitMethod(access: int, name: String, descriptor: String, signature: String, exceptions: String[]): MethodVisitor
+    }
 
     LintCheck <|.. NamingConventionCheck
     LintCheck <|.. NonPublicConstructorCheck
     LintCheck <|.. LongMethodCheck
     LintCheck <|.. MagicNumberCheck
-    LintCheck <|.. UnusedFieldOrMethodCheck
+    LintCheck <|.. UnusedFieldCheck
     LintCheck <|.. NullReturnCheck
 
     ClassVisitor <|.. NamingConventionCheck
     ClassVisitor <|.. NonPublicConstructorCheck
     ClassVisitor <|.. LongMethodCheck
     ClassVisitor <|.. MagicNumberCheck
-    ClassVisitor <|.. UnusedFieldOrMethodCheck
+    ClassVisitor <|.. UnusedFieldCheck
     ClassVisitor <|.. NullReturnCheck
+
+    NamingConventionCheck --> MethodVisitor
+    MagicNumberCheck --> MethodVisitor
+    LongMethodCheck --> MethodVisitor
+    UnusedFieldCheck --> MethodVisitor
+    UnusedFieldCheck --> FieldVisitor
+
+    NamingConventionCheck --> ClassReader
+    MagicNumberCheck --> ClassReader
+    LongMethodCheck --> ClassReader
+    UnusedFieldCheck --> ClassReader
+    NonPublicConstructorCheck --> ClassReader
+    NullReturnCheck --> ClassReader
+
+    NamingConventionCheck --> Reporter
+    MagicNumberCheck --> Reporter
+    LongMethodCheck --> Reporter
+    UnusedFieldCheck --> Reporter
+    NonPublicConstructorCheck --> Reporter
+    NullReturnCheck --> Reporter
+
+
+
+
+
 
     ' =======================
     ' Linter Runner
     ' =======================
     class LinterRunner {
-        -List checks
-        -Reporter reporter
-        +LinterRunner(List checks, Reporter reporter)
-        +void runOnPath(Path root)
+        - {final} checks: List<LintCheck>
+        - {final} reporter: Reporter
+        +LinterRunner(checks: List<LintCheck>, reporter: Reporter)
+        +runOnPath(root: Path): void
     }
 
     Main --> LinterRunner
     Main --> Reporter
     Main --> LintCheck
+    Main --> Path
 
     LinterRunner --> Reporter
     LinterRunner --> LintCheck
     LinterRunner --> ClassReader
 
+    ConsoleReporter --> PrintStream
+
     ' =======================
     ' Main
     ' =======================
     class Main {
-        +static void main(String[] args)
+        + {static} void main(String[] args)
     }
 }
 @enduml
