@@ -184,7 +184,6 @@ package src{
     LinterRunner ..> ClassReader
     LinterRunner --> Path
     LinterRunner ..> FileUtils
-    LinterRunner ..> Files
 
     ConsoleReporter --> PrintStream
 
