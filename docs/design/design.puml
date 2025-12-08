@@ -86,7 +86,7 @@ package src{
             +name(): String
             +runOnClass(reader: ClassReader, reporter:Reporter): void
             -report(methodName: String, value: Number): void
-            -isWhiteListed(n: Number): boolean
+            -isWhiteListedNumber(n: Number): boolean
             +visit(version: int, access: int, name: String, signature: String, superName: String, interfaces: String[]): void
             +visitMethod(access: int, name: String, descriptor: String, signature: String, exceptions: String[]): MethodVisitor
 

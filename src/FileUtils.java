@@ -1,4 +1,4 @@
-package jellybeans;
+package src;
 
 import java.nio.file.*;
 import java.io.IOException;

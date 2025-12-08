@@ -1,4 +1,4 @@
-package jellybeans;
+package src;
 
 import java.io.PrintStream;
 import java.nio.file.Path;

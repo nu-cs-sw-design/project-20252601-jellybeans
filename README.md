@@ -21,8 +21,8 @@ mkdir -p examples/out
 javac -d examples/out examples/*.java
 
 Run the linter (Mac/Linux)
-java -cp lib/asm-9.7.1.jar:out jellybeans.Main examples/out
+java -cp lib/asm-9.7.1.jar:out src.Main examples/out
 
 Run the linter (Windows)
-java -cp "lib\asm-9.7.1.jar;out" jellybeans.Main examples\out
+java -cp "lib\asm-9.7.1.jar;out" src.Main examples\out
 
