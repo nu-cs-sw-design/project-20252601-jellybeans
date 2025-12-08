@@ -30,7 +30,7 @@ public class Main {
             new NonPublicConstructorCheck(),
             new LongMethodCheck(50),
             new MagicNumberCheck(),
-            new UnusedFieldOrMethodCheck(),
+            new UnusedFieldCheck(),
             new NullReturnCheck()
         );
 

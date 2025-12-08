@@ -1,2 +1,146 @@
 @startuml
+package src{
+
+    ' =======================
+    ' External Types
+    ' =======================
+    class ClassReader
+    class ClassVisitor
+    class Path
+    class PrintStream
+
+    ' =======================
+    ' Reporter API
+    ' =======================
+    interface Reporter {
+        +void startFile(classFile: Path)
+        +void report(checkName: String, className: String, message: String)
+        +void endFile(classFile: Path)
+    }
+
+    class ConsoleReporter {
+        - {final} out: PrintStream
+        +ConsoleReporter(out: PrintStream )
+        +startFile(classFile: Path): void
+        +report(checkName: String, className: String, message: String): void
+        +endFile(classFile: Path): void
+    }
+
+    Reporter <|.. ConsoleReporter
+
+    ' =======================
+    ' LintCheck API
+    ' =======================
+    interface LintCheck {
+        +name(): String
+        +runOnClass(reader: ClassReader, reporter:Reporter): void
+    }
+
+    ' =======================
+    ' Concrete Checks
+    ' =======================
+    class NamingConventionCheck{
+        -reporter: Reporter
+        -simpleClassName: String
+
+        ~NamingConventionCheck()
+        +name(): String
+        +runOnClass(reader: ClassReader, reporter: Reporter): void
+        -report(message: String): void
+        +visit(version: int, access: int, name: String, signature: String, superName: String, interfaces: String[]): void
+        +visitMethod(access: int, name: String, descriptor: String, signature: String, exceptions: String[]): MethodVisitor
+        +visitField(access: int, name: String, descriptor: String, signature: String, value: Object): FieldVisitor
+    }
+    class NonPublicConstructorCheck{
+        -reporter: Reporter
+        -isPublicClass: boolean
+        -simpleClassName: String
+        -isAbstractOrInterface: boolean
+        -hasAnyCtor: boolean
+        -hasPublicOrProtectedCtor: boolean
+
+        +name(): String
+        +runOnClass(reader: ClassReader, reporter: Reporter): void
+        -report(message: String): void
+        +visit(version: int, access: int, name: String, signature: String, superName: String, interfaces: String[]): void
+        +visitMethod(access: int, name: String, descriptor: String, signature: String, exceptions: String[]): MethodVisitor
+        +visitEnd(): void
+    }
+    class LongMethodCheck {
+        -reporter: Reporter
+        -simpleClassName: String
+        -{final} maxInstructions: int
+
+        ~LongMethodCheck(maxInstructions: int)
+        +runOnClass(reader: ClassReader, reporter: Reporter): void
+        -report(methodName:String, count: int): void
+        +visit(version: int, access: int, name: String, signature: String, superName: String, interfaces: String[]): void
+        +visitMethod(access: int, name: String, descriptor: String, signature: String, exceptions: String[]): MethodVisitor
+    }
+    class MagicNumberCheck{
+        -reporter: Reporter
+        -simpleClassName: String
+
+        ~MagicNumberCheck()
+        +name(): String
+        +runOnClass(reader: ClassReader, reporter:Reporter): void
+        -report(methodName: String, value: Number): void
+        -isWhiteListed(n: Number): boolean
+        +visit(version: int, access: int, name: String, signature: String, superName: String, interfaces: String[]): void
+        +visitMethod(access: int, name: String, descriptor: String, signature: String, exceptions: String[]): MethodVisitor
+
+    }
+    class UnusedFieldCheck {
+        -reporter: Reporter
+        -simpleClassName: String
+        -classInternalName: String
+        -{final} privateFields: Set<String>
+        -{final} usedFields
+
+        ~UnusedFieldCheck()
+        +name(): String
+        +runOnClass(reader: ClassReader, reporter: Reporter): void
+
+    }
+    class NullReturnCheck
+
+    LintCheck <|.. NamingConventionCheck
+    LintCheck <|.. NonPublicConstructorCheck
+    LintCheck <|.. LongMethodCheck
+    LintCheck <|.. MagicNumberCheck
+    LintCheck <|.. UnusedFieldOrMethodCheck
+    LintCheck <|.. NullReturnCheck
+
+    ClassVisitor <|.. NamingConventionCheck
+    ClassVisitor <|.. NonPublicConstructorCheck
+    ClassVisitor <|.. LongMethodCheck
+    ClassVisitor <|.. MagicNumberCheck
+    ClassVisitor <|.. UnusedFieldOrMethodCheck
+    ClassVisitor <|.. NullReturnCheck
+
+    ' =======================
+    ' Linter Runner
+    ' =======================
+    class LinterRunner {
+        -List checks
+        -Reporter reporter
+        +LinterRunner(List checks, Reporter reporter)
+        +void runOnPath(Path root)
+    }
+
+    Main --> LinterRunner
+    Main --> Reporter
+    Main --> LintCheck
+
+    LinterRunner --> Reporter
+    LinterRunner --> LintCheck
+    LinterRunner --> ClassReader
+
+    ' =======================
+    ' Main
+    ' =======================
+    class Main {
+        +static void main(String[] args)
+    }
+}
 @enduml

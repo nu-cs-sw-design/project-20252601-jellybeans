@@ -366,8 +366,11 @@ class MagicNumberCheck extends ClassVisitor implements LintCheck {
 
             @Override
             public void visitLdcInsn(Object value) {
-                if (value instanceof Number num && !isWhitelistedNumber(num)) {
-                    report(name, num);
+                if (value instanceof Number) {
+                    Number num = (Number) value;
+                    if (!isWhitelistedNumber(num)) {
+                        report(name, num);
+                    }
                 }
                 super.visitLdcInsn(value);
             }
@@ -380,16 +383,16 @@ class MagicNumberCheck extends ClassVisitor implements LintCheck {
    5. UnusedFieldOrMethodCheck
    ============================================================ */
 /**
- * UnusedFieldOrMethodCheck
+ * UnusedFieldCheck
  *
- * Attempts to detect fields and methods that are declared but never used
+ * Attempts to detect fields  that are declared but never used
  * within the same class.
  *
  * For simplicity and to reduce false positives, this implementation focuses
- * on private fields and private methods (excluding constructors and
+ * on private fields excluding constructors and
  * static initializers).
  */
-class UnusedFieldOrMethodCheck extends ClassVisitor implements LintCheck {
+class UnusedFieldCheck extends ClassVisitor implements LintCheck {
 
     private Reporter reporter;
     private String simpleClassName;
@@ -398,17 +401,13 @@ class UnusedFieldOrMethodCheck extends ClassVisitor implements LintCheck {
     private final Set<String> privateFields = new HashSet<>();
     private final Set<String> usedFields = new HashSet<>();
 
-    // methods are tracked by "name:descriptor"
-    private final Set<String> privateMethods = new HashSet<>();
-    private final Set<String> usedMethods = new HashSet<>();
-
-    UnusedFieldOrMethodCheck() {
+    UnusedFieldCheck() {
         super(Opcodes.ASM9);
     }
 
     @Override
     public String name() {
-        return "UnusedFieldOrMethod";
+        return "UnusedField";
     }
 
     @Override
@@ -419,8 +418,6 @@ class UnusedFieldOrMethodCheck extends ClassVisitor implements LintCheck {
 
         privateFields.clear();
         usedFields.clear();
-        privateMethods.clear();
-        usedMethods.clear();
 
         reader.accept(this, 0);
     }
@@ -460,10 +457,8 @@ class UnusedFieldOrMethodCheck extends ClassVisitor implements LintCheck {
                                      String descriptor,
                                      String signature,
                                      String[] exceptions) {
-
-        boolean isConstructor = name.equals("<init>") || name.equals("<clinit>");
-        if ((access & Opcodes.ACC_PRIVATE) != 0 && !isConstructor) {
-            privateMethods.add(name + ":" + descriptor);
+        if (name.equals("<init>") || name.equals("<clinit>")) {
+            return super.visitMethod(access, name, descriptor, signature, exceptions);
         }
 
         MethodVisitor parent = super.visitMethod(access, name, descriptor, signature, exceptions);
@@ -479,18 +474,6 @@ class UnusedFieldOrMethodCheck extends ClassVisitor implements LintCheck {
                 }
                 super.visitFieldInsn(opcode, owner, fieldName, fieldDesc);
             }
-
-            @Override
-            public void visitMethodInsn(int opcode,
-                                        String owner,
-                                        String methodName,
-                                        String methodDesc,
-                                        boolean itf) {
-                if (owner.equals(classInternalName)) {
-                    usedMethods.add(methodName + ":" + methodDesc);
-                }
-                super.visitMethodInsn(opcode, owner, methodName, methodDesc, itf);
-            }
         };
     }
 
@@ -501,14 +484,6 @@ class UnusedFieldOrMethodCheck extends ClassVisitor implements LintCheck {
                 report("Private field '" + field + "' appears to be unused.");
             }
         }
-
-        for (String methodKey : privateMethods) {
-            if (!usedMethods.contains(methodKey)) {
-                String methodName = methodKey.substring(0, methodKey.indexOf(':'));
-                report("Private method '" + methodName + "' appears to be unused.");
-            }
-        }
-
         super.visitEnd();
     }
 }
