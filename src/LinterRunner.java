@@ -1,4 +1,4 @@
-package src;
+package jellybeans;
 
 import org.objectweb.asm.ClassReader;
 

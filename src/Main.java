@@ -1,4 +1,4 @@
-package src;
+package jellybeans;
 
 import java.nio.file.Path;
 import java.util.List;
