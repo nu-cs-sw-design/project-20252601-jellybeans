@@ -14,7 +14,7 @@ import java.util.List;
 public class Main {
     public static void main(String[] args) {
         if (args.length != 1) {
-            System.err.println("Usage: java -cp lib/asm-9.7.1.jar:out jellybeans.Main <file-or-directory>");
+            System.err.println("Usage: java -cp lib/asm-9.7.1.jar:out src.Main <file-or-directory>");
             System.exit(1);
         }
 
